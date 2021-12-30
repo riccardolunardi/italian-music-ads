@@ -1,0 +1,32 @@
+---
+title: "italian-music-ads"
+author: "Riccardo Lunardi"
+date: "30/12/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Hip Hop italiano
+
+Introduzione all'argomento
+
+## Caricamento dei pacchetti 
+
+```{r}
+library("dplyr")
+```
+
+```{r cars}
+load("scraper/music_data")
+
+```
+
+```{r cars}
+music <- my_df %>%
+  mutate(artists = stringr::str_split(artists, ",")) %>%
+  rowwise() %>% 
+  mutate(artists = if_else(is.character(artists), c(artists)))
+```
