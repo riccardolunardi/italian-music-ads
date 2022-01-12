@@ -77,26 +77,19 @@ artists = pd.DataFrame.from_dict(every_artist)
 albums = pd.DataFrame.from_dict(every_album)
 
 artists.to_pickle("artists.pkl")
-exit()
 ################################################
 
-albums_no_dups = pd.read_pickle("./albums_no_dups9.pkl")
-
-proxy = {
-    "http": "http://7a70c0431677:9e5641d348@45.84.110.192:12323",
-    "https": "https://7a70c0431677:9e5641d348@45.84.110.192:12323"
-}
-
+albums_no_dups = pd.read_pickle("./track_albums.pkl")
 proxy = None
 
 counter = 0
-for track in albums_no_dups[albums_no_dups.index > 25018].itertuples():
-    if track.lyrics != "NA":
+for track in albums_no_dups.itertuples():
+    if track.lyrics != []:
         continue
 
     counter += 1
 
-    if counter % 1000 == 0:
+    if counter % 2000 == 0:
         print("Salvataggio file")
         albums_no_dups.to_pickle(f"checkpoints/albums_no_dups{counter}.pkl")
 

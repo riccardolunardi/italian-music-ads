@@ -1,6 +1,6 @@
 import pandas as pd
 
-albums_no_dups = pd.read_pickle("albums_no_dups_final2.pkl")
+albums_no_dups = pd.read_pickle("tracks.pkl")
 
 na_counter = 0
 song_counter = 0 
