@@ -20,13 +20,24 @@ library("dplyr")
 ```
 
 ```{r cars}
-load("scraper/music_data")
-
+load("scraper/artists.RData")
+artists$genres = as.factor(artists$genres)
 ```
 
 ```{r cars}
-music <- my_df %>%
-  mutate(artists = stringr::str_split(artists, ",")) %>%
-  rowwise() %>% 
-  mutate(artists = if_else(is.character(artists), c(artists)))
+library(ggplot2)
+
+genres_df <- artists %>%
+  distinct(id, name, genres) %>%
+  transform(count = table(genres)[genres]) %>%
+  filter(count.Freq > 20) %>%
+  arrange(desc(count.Freq))
+
+ggplot(data=genres_df, aes(reorder(genres, count.Freq))) +
+  geom_bar() +
+  coord_flip()
 ```
+
+
+
+
