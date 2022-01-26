@@ -21,8 +21,18 @@ library("dplyr")
 
 ```{r cars}
 load("scraper/artists.RData")
+load("scraper/tracks.RData")
+
 artists$genres = as.factor(artists$genres)
+
+tracks <- tracks %>%
+  mutate(release_date = as.Date(release_date, "%Y-%m-%d"))
 ```
+
+
+
+GENERI CHE ANDREMO A TRATTARE
+
 
 ```{r cars}
 library(ggplot2)
@@ -38,6 +48,110 @@ ggplot(data=genres_df, aes(reorder(genres, count.Freq))) +
   coord_flip()
 ```
 
+COME è VARIATA LA DURATA DELLE CANZONI
+
+```{r cars}
+
+duration_per_month <- tracks %>%
+  filter(release_date > "1990-01-01", duration_ms < 4*10^5) %>%
+  group_by(month = lubridate::floor_date(release_date, "month")) %>%
+  summarize(duration_ms_month = mean(duration_ms))
+  
+ggplot(duration_per_month, aes(x=month, y=duration_ms_month)) + 
+  geom_point() +
+  geom_smooth(method=lm)
+
+# Non di molto, ma sono negativamente correlate
+cor(duration_per_month$duration_ms_month, as.numeric(duration_per_month$month))
+```
+
+è VARIATA ABBASTANZA
 
 
+```{r cars}
 
+tracks_per_month <- tracks %>%
+  distinct(album_id, release_date, total_tracks) %>%
+  filter(release_date > "1990-01-01", total_tracks < 30) %>%
+  group_by(month = lubridate::floor_date(release_date, "month")) %>%
+  summarize(tracks_month = mean(total_tracks))
+  
+ggplot(tracks_per_month, aes(x=month, y=tracks_month)) + 
+  geom_point() +
+  geom_smooth(method=lm)
+
+# Non di molto, ma sono negativamente correlate
+cor(as.numeric(tracks_per_month$month), tracks_per_month$tracks_month)
+```
+
+NON SEMBRA ESSERCI MOLTA DIFFERENZA PER IL NUMERO DI TRACCE
+
+AUTOMATICAMENTE POSSO DIRE CHE **IN MEDIA**, IL CONTENUTO è MINORE
+
+(DECIDRE SE TENERE IL PEZZO DI CODICE SUCCESSIVO)
+
+```{r cars}
+content_per_month <- tracks %>%
+  distinct(album_id, duration_ms, release_date, total_tracks) %>%
+  filter(release_date > "1990-01-01", total_tracks < 30, duration_ms < 4*10^5) %>%
+  group_by(month = lubridate::floor_date(release_date, "month")) %>%
+  summarise(
+    duration_ms_month = mean(duration_ms), 
+    total_tracks_month = mean(total_tracks)
+  ) %>%
+  mutate(content = duration_ms_month * total_tracks_month)
+  
+content_per_month
+
+ggplot(content_per_month, aes(x=month, y=content)) + 
+  geom_point() +
+  geom_smooth(method=lm)
+
+# Non di molto, ma sono negativamente correlate
+cor(as.numeric(content_per_month$month), content_per_month$content)
+```
+
+GENERI A CONFRONTO (PER LA DURATA)
+
+```{r cars}
+allowed_genres = c("italian hip hop", 
+                  "italian underground hip hop", 
+                  "italian adult pop", 
+                  "italian indie pop")
+
+artists_main_genre <- artists %>%
+  select(-followers, -popularity) %>%
+  filter(genres %in% allowed_genres) %>%
+  group_by(album) %>%
+  top_n(n=1, wt=desc(genres)) %>%
+  rename(album_id=album)
+
+album_info_genres <- tracks %>%
+  distinct(album_id, release_date, total_tracks, duration_ms) %>%
+  filter(release_date > "1990-01-01", total_tracks < 30, duration_ms < 4*10^5) %>%
+  inner_join(artists_main_genre) %>%
+  select(album_id, release_date, total_tracks, duration_ms, id, genres)
+```
+DURATA MENSILE PER GENERE
+
+```{r cars}
+duration_per_genre_month <- album_info_genres %>%
+  group_by(genres, month = lubridate::floor_date(release_date, "month")) %>%
+  summarize(duration_month_mean = mean(duration_ms))
+  
+ggplot(duration_per_genre_month, aes(x=month, y=duration_month_mean, color=genres)) + 
+  geom_point() +
+  geom_smooth(method=lm)
+```
+
+TRACK MESILE PER GENERE
+
+```{r cars}
+tracks_per_genre_month <- album_info_genres %>%
+  group_by(genres, month = lubridate::floor_date(release_date, "month")) %>%
+  summarize(tracks_month_mean = mean(total_tracks))
+  
+ggplot(tracks_per_genre_month, aes(x=month, y=tracks_month_mean, color=genres)) + 
+  geom_point() +
+  geom_smooth(method=lm)
+```
