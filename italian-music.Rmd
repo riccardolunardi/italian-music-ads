@@ -16,17 +16,28 @@ Introduzione all'argomento
 ## Caricamento dei pacchetti 
 
 ```{r}
-library("dplyr")
+library(dplyr)
+library(igraph)
+library(tidygraph)
+library(ggraph)
 ```
 
 ```{r cars}
 load("scraper/artists.RData")
-load("scraper/tracks.RData")
+# load("scraper/tracks.RData")
+load("scraper/tracks_v2.RData")
 
-artists$genres = as.factor(artists$genres)
+artists$genres <- as.factor(artists$genres)
 
-tracks <- tracks %>%
-  mutate(release_date = as.Date(release_date, "%Y-%m-%d"))
+only_artists <- artists %>%
+  select(-album) %>%
+  distinct(id, .keep_all=T)
+  
+
+tracks <- tracks_v2 %>%
+  mutate(release_date = as.Date(release_date, "%Y-%m-%d")) %>%
+  distinct(track_id, .keep_all = TRUE)
+
 ```
 
 
@@ -154,4 +165,159 @@ tracks_per_genre_month <- album_info_genres %>%
 ggplot(tracks_per_genre_month, aes(x=month, y=tracks_month_mean, color=genres)) + 
   geom_point() +
   geom_smooth(method=lm)
+```
+
+
+GRAFO
+
+
+```{r cars}
+library(gtools)
+
+artist_nodes <- tracks_v2 %>%
+  inner_join(artists, by = c('artists' = 'id')) %>%
+  distinct(artists, name, followers) %>%
+  rename(artist_id = artists, artist_name = name)
+  
+feat_songs <- tracks_v2 %>%
+  inner_join(artist_nodes, by = c('artists' = 'artist_id')) %>%
+  select(track_id) %>%
+  group_by(track_id) %>%
+  mutate(feat = n()) %>%
+  filter(feat > 1) %>%
+  distinct(track_id, .keep_all = T)
+
+songs_edges <- data.frame(to=character(), from=character())
+# Per ogni canzone in cui c'è stato un feat
+for(feat in feat_songs$track_id){
+  # 1. Trovare chi ha partecipato in quella canzone
+  feat_artists <- tracks_v2 %>% filter(track_id == feat) %>% select(artists)
+  # 2. Fare permutazione di due
+  connections <- combinations(
+    n=length(feat_artists$artists), 
+    r=2, 
+    v=feat_artists$artists, 
+    repeats.allowed=FALSE)[1,]
+  
+  # 3. Metterle in un dataframe
+  songs_edges[nrow(songs_edges) + 1,] = connections
+}
+
+songs_edges <- songs_edges %>%
+  group_by(to, from) %>%
+  filter(to %in% artist_nodes$artist_id, from %in% artist_nodes$artist_id) %>%
+  summarise("weight" = n()) %>%
+  arrange(-feat)
+
+songs_edges <- songs_edges %>%
+  mutate(weight = feat) %>%
+  select(-feat)
+```
+
+```{r}
+g = graph_from_data_frame(songs_edges, directed = FALSE, vertices = artist_nodes)
+```
+
+```{r}
+tidy = as_tbl_graph(g)
+```
+
+```{r}
+top_n <- function(array, n, maxi = T) {
+  return(
+    attributes(
+      distinct_featuring[order(array, decreasing = maxi)[1:n]])$names
+    )
+}
+
+distinct_featuring <- degree(g, mode = "total")
+feat_number <- strength(g, mode = "total")
+feat_closeness <- closeness(g)
+feat_betweenness <- betweenness(g)
+
+degree_feat <- top_n(distinct_featuring, 5)
+total_feat <- top_n(feat_number, 5)
+closeness_artists <- top_n(feat_closeness, 5)
+betweenness_artists <- top_n(feat_betweenness, 5)
+
+only_artists %>%
+  filter(id %in% degree_feat) %>%
+  arrange(factor(id, levels = degree_feat))
+
+only_artists %>%
+  filter(id %in% total_feat) %>%
+  arrange(factor(id, levels = total_feat))
+
+only_artists %>%
+  filter(id %in% closeness_artists) %>%
+  arrange(factor(id, levels = closeness_artists))
+
+only_artists %>%
+  filter(id %in% betweenness_artists) %>%
+  arrange(factor(id, levels = betweenness_artists))
+
+```
+
+```{r}
+# Misure di centralità ricorsive
+ev = eigen_centrality(g)$vector
+
+A = as_adjacency_matrix(g)
+eig = eigen(A)$values
+r = max(abs(eig))
+x = alpha_centrality(g, alpha = 0.85 / r, exo = 1)
+
+pr <- page_rank(g)$vector
+
+eigen_cen_feat <- top_n(ev, 5)
+alpha_feat <- top_n(x, 5)
+pr_artists <- top_n(pr, 5)
+
+only_artists %>%
+  filter(id %in% eigen_cen_feat) %>%
+  arrange(factor(id, levels = eigen_cen_feat))
+
+only_artists %>%
+  filter(id %in% alpha_feat) %>%
+  arrange(factor(id, levels = alpha_feat))
+
+only_artists %>%
+  filter(id %in% pr_artists) %>%
+  arrange(factor(id, levels = pr_artists))
+
+```
+CLUSTERING
+
+```{r}
+g_no_low_followers <- delete_vertices(g, V(g)$followers <= 100000)
+
+c1 <- cluster_leading_eigen(g_no_low_followers)
+c2 <- cluster_leading_eigen(g_no_low_followers)
+c3 <- cluster_edge_betweenness(g_no_low_followers)
+c4 <- cluster_louvain(g_no_low_followers)
+c5 <- cluster_optimal(g_no_low_followers)
+
+modularity(c1)
+modularity(c2)
+modularity(c3)
+modularity(c4)
+modularity(c5)
+```
+
+
+```{r}
+set_graph_style()
+
+tidy %>%
+  activate(nodes) %>%
+  mutate(degree = centrality_degree()) %>%
+  filter(degree > 13, followers > 100000) %>% 
+  mutate(community = as.factor(group_louvain())) %>% 
+  activate(edges) %>%
+  ggraph() +
+  geom_edge_link(aes(alpha = centrality_edge_betweenness())) +
+  geom_node_point(aes(size = centrality_pagerank(), colour = community)) + 
+  geom_node_text(aes(label = artist_name),  repel = TRUE)
+
+# ggsave(filename = "test.tiff",  width = 25, height = 15, dpi=350)
 ```
