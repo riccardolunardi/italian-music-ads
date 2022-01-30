@@ -44,8 +44,8 @@ Per caricare le informazioni ottenute dallo scraper utilizziamo la funzione `loa
 ```{r Caricamento dati, echo=TRUE, warning=FALSE, message=FALSE, results=FALSE}
 library(dplyr)
 
-load("scraper/artists.RData") 
-load("scraper/tracks_v2.RData")
+load("scraper/dataset_finale/artists.RData") 
+load("scraper/dataset_finale/tracks_v2.RData")
 
 # Visto che i generi sono sempre gli stessi, li consideriamo come fattori e non
 # come testo
