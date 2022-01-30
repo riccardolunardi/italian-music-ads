@@ -1,0 +1,22 @@
+/* scrolling */
+slides > slide {
+  overflow-x: auto !important;
+  overflow-y: auto !important;
+}
+
+/* hide page numbers */
+slides > slide:not(.nobackground):after {
+  content: '';
+}
+
+.lightable-paper.lightable-hover tr {
+    transition: background 0.2s ease-in;
+}
+
+.lightable-paper.lightable-hover tr:nth-child(odd):hover {
+    background: #5FBBE2;
+}
+
+.lightable-paper.lightable-hover tr:nth-child(even):hover  {
+    background: #E2865F;
+}

@@ -1,0 +1,608 @@
+---
+title: "Hip-hop italiano"
+author: "Riccardo Lunardi"
+date: "2/02/2022"
+output:
+  ioslides_presentation:
+    css: ./style.css
+    incremental: yes
+editor_options: 
+  chunk_output_type: inline
+---
+
+```{r setup, include=FALSE}
+library(knitr)
+opts_chunk$set(cache = TRUE, message = FALSE, warning = FALSE)
+```
+
+## Analisi sull'hip-hop italiano
+
+- Com'è cambiata la struttura delle canzoni nel corso del tempo?
+- Quali sono gli artisti che possono vantare di più collaborazioni?
+- Chi è l'artista più influente?
+- I testi dei brani possono essere considerati positivi o negativi?
+- In che gruppi vengono divisi gli artisti, osservando le loro collaborazioni?
+
+## Provenienza dei dati
+
+* Dati sugli artisti e sui brani:
+  * Spotify
+* Lyrics:
+  * AZlyrics
+  * lyrics.ovh
+
+
+```{r Caricamento dati, echo=FALSE, warning=FALSE, message=FALSE, results=FALSE}
+library(dplyr)
+
+load("scraper/dataset_finale/artists.RData") 
+load("scraper/dataset_finale/tracks_v2.RData")
+
+# Visto che i generi sono sempre gli stessi, li consideriamo come fattori e non
+# come testo
+artists$genres <- as.factor(artists$genres)
+
+# Rimuoviamo il parametro "popularity", il quale è un parametro fornito da
+# Spotify sulla popolarità di un certo artista in un dato momento
+artists <- artists %>%
+  select(-popularity)
+
+# Creiamo un dataframe di soli artisti non ripetuti, eliminando l'informazione
+# sugli album
+only_artists <- artists %>%
+  select(-album) %>%
+  distinct(id, .keep_all=T)
+
+# Su Python alcuni testi sono stati impostati a "NA": qui convertiamo tale
+# stringa in un NA riconosciuto tale da R
+tracks_v2$lyrics[tracks_v2$lyrics=="NA"] = NA 
+```
+
+## Generi trattati
+
+```{r Generi trattati, echo=FALSE, warning=FALSE, message=FALSE}
+library(ggplot2)
+
+genres_df <- artists %>%
+  distinct(id, name, genres) %>%
+  transform(count = table(genres)[genres]) %>%
+  filter(count.Freq > 20) %>%
+  arrange(desc(count.Freq))
+
+custom_theme <- theme(plot.title = element_text(size=14, face="bold"),
+        axis.title.x = element_text(size=11, face="bold"),
+        axis.title.y = element_text(size=11, face="bold"),
+        axis.text = element_text(size=8, face="bold"))
+
+ggplot(data=genres_df, aes(reorder(genres, count.Freq))) +
+  geom_bar(fill="#5FBBE2", color="black", size=0.5) +
+  coord_flip() + 
+  theme_bw() +
+  labs(
+    title = "Numero di brani per genere musicale",
+    x = "Genere",
+    y = "Numero di brani"
+  ) +
+  custom_theme
+  
+```
+
+## Com'è cambiata la durata delle canzoni e degli album nel corso del tempo?
+
+```{r Durata delle canzoni, echo=FALSE, warning = FALSE, message=FALSE}
+# Si trasforma la colonna release_date da striga a oggetto "Date", eliminando 
+# tutti i brani doppi
+tracks <- tracks_v2 %>%
+  mutate(release_date = as.Date(release_date, "%Y-%m-%d")) %>%
+  distinct(track_id, .keep_all = TRUE)
+
+# Vengono aggregate le durate delle canzoni per mese
+duration_per_month <- tracks %>%
+  filter(release_date > "1990-01-01", duration_ms < 4*10^5) %>%
+  group_by(month = lubridate::floor_date(release_date, "month")) %>%
+  summarize(duration_ms_month = mean(duration_ms))
+
+# Tema custom per gli scatterplot
+custom_scatter_plot <- theme(axis.line = element_line(colour = "black"),
+                             panel.border = element_blank(),
+                             panel.background = element_blank()) 
+
+# Scatterplot mese~durata
+ggplot(duration_per_month, aes(x=month, y=duration_ms_month)) + 
+  geom_point() +
+  geom_smooth(method=lm) +
+  labs(title = "Durata media dei brani per mese", 
+       x = "Mesi",
+       y = "Durata media dei brani (ms)"
+  ) +
+  theme_bw() + 
+  custom_theme +
+  custom_scatter_plot
+```
+
+**Coefficiente di Pearson: -0.51**
+
+## Numero di tracce per album medio
+
+```{r Numero di tracce medio, echo=FALSE, warning = FALSE, message=FALSE}
+tracks_per_month <- tracks %>%
+  distinct(album_id, release_date, total_tracks) %>%
+  filter(release_date > "1990-01-01", total_tracks < 30) %>%
+  group_by(month = lubridate::floor_date(release_date, "month")) %>%
+  summarize(tracks_month = mean(total_tracks))
+  
+ggplot(tracks_per_month, aes(x=month, y=tracks_month)) + 
+  geom_point() +
+  geom_smooth(method=lm) +
+  labs(title = "Numero di tracce medio per mese", 
+       x = "Mesi",
+       y = "Numero di tracce medio pubblicate in un album"
+  ) +
+  theme_bw() + 
+  custom_theme +
+  custom_scatter_plot
+```
+
+**Coefficiente di Pearson: -0.08**
+
+## Durata delle canzoni media: generi a confronto
+
+```{r Durata delle canzoni: generi a confronto, echo=FALSE, warning = FALSE, results=FALSE}
+allowed_genres = c("italian hip hop", 
+                   "italian underground hip hop", 
+                   "italian adult pop", 
+                   "italian indie pop")
+
+# Per ogni artista viene considerato solo il suo genere principale, ovvero il
+# primo, seguendo l'ordine del dataframe
+artists_main_genre <- artists %>%
+  select(-followers) %>%
+  filter(genres %in% allowed_genres) %>%
+  group_by(album) %>%
+  top_n(n=1, wt=desc(genres)) %>%
+  rename(album_id=album)
+
+# Questo dataframe viene filtratp anche per album perché verrà utilizzato anche 
+# in un successivo blocco di codice.
+album_info_genres <- tracks %>%
+  distinct(album_id, release_date, total_tracks, duration_ms) %>%
+  filter(release_date > "1990-01-01", 
+         total_tracks < 30, 
+         duration_ms < 4*10^5) %>%
+  inner_join(artists_main_genre) %>%
+  select(album_id, release_date, total_tracks, duration_ms, id, genres)
+
+```
+
+```{r Durata mesile, per genere, echo=FALSE, warning=FALSE, error=FALSE}
+duration_per_genre_month <- album_info_genres %>%
+  group_by(genres, month = lubridate::floor_date(release_date, "month")) %>%
+  summarize(duration_month_mean = mean(duration_ms))
+
+# Tema customizzato per la legenda
+legend_custom <- theme(legend.title = element_text(size = 10), 
+        legend.text  = element_text(size = 8),
+        legend.key.size = unit(1, "lines"),
+        legend.background=element_blank())
+
+# Plot per il numbero medio di canzoni pubblicate 
+ggplot(duration_per_genre_month, aes(x=month, y=duration_month_mean, 
+                                     color=genres)) + 
+  geom_point() +
+  geom_smooth(method=lm) +
+  scale_color_brewer(name="Generi", palette = "Spectral") +
+  labs(title = "Durata media dei brani per mese", 
+       x = "Mesi",
+       y = "Durata media dei brani (ms)"
+  ) +
+  theme_bw() + 
+  custom_theme +
+  custom_scatter_plot +
+  legend_custom
+```
+
+## Correlazioni
+
+* **italian adult pop**:  -0.45
+* **italian hip hop**: -0.37
+* **italian indie pop**: -0.26
+* **italian underground hip hop**: -0.31
+
+```{r Importing di tidyr, echo=FALSE, warning = FALSE, results = FALSE}
+library(tidyr)
+```
+
+## Numero di tracce pubblicate medio: generi a confronto
+
+```{r Numero di tracce medio confrontando il genere, echo=FALSE, message=FALSE}
+tracks_per_genre_month <- album_info_genres %>%
+  group_by(genres, month = lubridate::floor_date(release_date, "month")) %>%
+  summarize(tracks_month_mean = mean(total_tracks))
+  
+ggplot(tracks_per_genre_month, aes(x=month, y=tracks_month_mean, color=genres)) + 
+  geom_point() +
+  geom_smooth(method=lm) +
+  scale_color_brewer(name="Generi", palette = "Spectral") +
+  labs(title = "Numero di tracce medio pubblicato al mese", 
+       x = "Mesi",
+       y = "Numero di tracce medio pubblicato"
+  ) +
+  theme_bw() + 
+  custom_theme +
+  custom_scatter_plot +
+  legend_custom
+```
+
+## Correlazioni
+
+* **italian adult pop**: 0.07
+* **italian hip hop**: -0.21
+* **italian indie pop**: -0.17
+* **italian underground hip-hop**: -0.10
+
+```{r Import di igraph e gtools, echo=FALSE, warning=FALSE, message=FALSE, results=FALSE}
+library(igraph)
+library(gtools)
+
+# Vertici. Per ogni id, vengono anche salvati i dati riguardanti il numero di
+# follower e il nome dell'artista
+artist_nodes <- tracks_v2 %>%
+  inner_join(artists, by = c('artists' = 'id')) %>%
+  distinct(artists, name, followers) %>%
+  rename(artist_id = artists, artist_name = name)
+  
+# feat_songs è un dataframe contenente tutte le tracce a cui hanno partecipato
+# almeno due persone. Di ogni traccia viene salvata anche la data di 
+# pubblicazione
+feat_songs <- tracks_v2 %>%
+  inner_join(artist_nodes, by = c('artists' = 'artist_id')) %>%
+  select(track_id, release_date) %>%
+  group_by(track_id) %>%
+  mutate(feat = n()) %>%
+  filter(feat > 1) %>%
+  distinct(track_id, .keep_all = T)
+
+# Matrice vuota, con tre colonne
+matrix_songs_edges <- matrix(data=NA, nrow = 0, ncol = 3)
+
+# Per ogni canzone in cui c'è stato un feat
+for(feat in feat_songs$track_id){
+  # 1. Trovare chi ha partecipato in quella canzone
+  feat_artists <- tracks_v2 %>% 
+    filter(track_id == feat) %>% 
+    select(artists, release_date)
+  
+  # 2a. Fare combinazioni di due, senza ripetizioni
+  connections <- combinations(
+    n=length(feat_artists$artists), 
+    r=2, 
+    v=feat_artists$artists, 
+    repeats.allowed=FALSE)
+  
+  # 2b. Aggiungere alle combinazioni la data di collaborazione
+  connections <- cbind(connections, 
+                       rep(feat_artists$release_date[1], nrow(connections)))  
+  
+  # 3. Aggiungere le combinazioni alla matrice
+  matrix_songs_edges <- rbind(matrix_songs_edges, connections)
+}
+
+# 4, Convertire la matrice in dataframe
+songs_edges <- as.data.frame(matrix_songs_edges)
+colnames(songs_edges) <- c('to', 'from', "release_date")
+
+# Archi
+songs_edges <- songs_edges %>%
+  group_by(to, from) %>%
+  filter(to %in% artist_nodes$artist_id, from %in% artist_nodes$artist_id) %>%
+  summarise(weight = n()) %>%
+  ungroup() %>%
+  arrange(-weight)
+```
+
+## Coppie più affiatate dell'hip-hop italiano
+
+```{r Artisti che hanno collaborato di più, echo=FALSE}
+
+feat_couples <- songs_edges %>%
+  inner_join(artists, by = c("to" = "id")) %>%
+  inner_join(artists, by = c("from" = "id")) %>%
+  rename("to_name" = name.x, "from_name" = name.y) %>%
+  mutate(followers = followers.x + followers.y) %>%
+  distinct(to, from, .keep_all = TRUE) %>%
+  ungroup() %>% # Per risolvere "Adding missing grouping variables: to"
+  select(to_name, from_name, followers, weight) %>%
+  filter(followers > 10000)
+  
+table_featuring <- feat_couples %>%
+  rename("Primo artista" = "to_name",
+         "Secondo artista" = "from_name",
+         "Followers" = "followers",
+         "Featuring" = "weight") %>%
+  slice_max(Featuring, n=8)
+```
+
+```{r table-featuring, echo=FALSE}
+library(kableExtra)
+
+table_featuring %>%
+  kbl() %>%
+    kable_paper("hover",  full_width = T)
+```
+
+```{r Generazione grafo, echo=FALSE}
+g = graph_from_data_frame(songs_edges, directed = FALSE, vertices = artist_nodes)
+g = delete.vertices(g, which(degree(g)==0))
+```
+
+## Featuring
+
+```{r Calcolo del degree e della strength, echo=FALSE}
+library(ggpubr)
+library(grid)
+library(stringr)
+# Funzione che ritorna gli n numeri più grandi (maxi = TRUE) o gli n numeri più
+# piccoli (maxi = FALSE) del vettore "array"
+top_n_custom <- function(array, n, maxi = T) {
+  return(
+      distinct_featuring[order(array, decreasing = maxi)[1:n]]
+      )
+}
+
+# Numero di feature con artisti diversi
+distinct_featuring <- degree(g, mode = "total")
+# Numero di feature totlae
+feat_number <- strength(g, mode = "total")
+
+# Si isolano, di entrambi gli array, i massimi 5
+degree_feat <- top_n_custom(distinct_featuring, 10)
+total_feat <- top_n_custom(feat_number, 10)
+
+degree_plot <- only_artists %>%
+  filter(id %in% names(degree_feat)) %>%
+  mutate(degree = distinct_featuring[id]) %>%
+  arrange(-degree) %>%
+  slice_max(degree, n=5) %>%
+  
+  ggplot(aes(x = reorder(name, -degree), y = degree)) +
+  geom_bar(stat="identity", fill="#5FBBE2", color="black", size=0.5, position = "dodge") +
+  scale_x_discrete(labels = function(x) str_replace_all(x, " " , "\n")) +
+  theme_bw() +
+  custom_theme
+
+
+strength_plot <- only_artists %>%
+  filter(id %in% names(total_feat)) %>%
+  mutate(total_feat = total_feat[id]) %>%
+  arrange(-total_feat) %>%
+  slice_max(total_feat, n=5) %>%
+  
+  ggplot(aes(x = reorder(name, -total_feat), y = total_feat)) +
+  geom_bar(stat="identity", fill="#E2865F", color="black", size=0.5, position = "dodge") +
+  scale_x_discrete(labels = function(x) str_replace_all(x, " " , "\n")) +
+  theme_bw() +
+  custom_theme
+
+test <- ggarrange(degree_plot + rremove("ylab") + rremove("xlab"), 
+          strength_plot + rremove("ylab") + rremove("xlab"))
+
+annotate_figure(test, left = textGrob("Numero di featuring", rot = 90, vjust = 0.65, gp = gpar(cex = 1.1)),
+                    bottom = textGrob("Artisti", vjust = 0.1, hjust = 0.3, gp = gpar(cex = 1.3)))
+
+
+```
+
+## Influenza nella rete di artisti
+
+```{r Calcolo delle misure di centralità ricorsive, echo=FALSE}
+#PageRank
+pr <- page_rank(g)$vector
+
+pr_artists <- top_n_custom(pr, 5)
+
+only_artists %>%
+  filter(id %in% names(pr_artists)) %>%
+  arrange(factor(id, levels = pr_artists)) %>%
+  select(-id, -genres) %>%
+  rename("Artista" = "name", "Followers"="followers") %>%
+  kbl(row.names = F) %>%
+  kable_paper("hover",  full_width = T, font_size = 25)
+
+```
+
+## I testi possono essere considerati positivi o negativi?
+
+```{r Import di parallel e TextWiller, echo=FALSE, warning=FALSE, message=FALSE, results=FALSE}
+library(parallel)
+library(TextWiller) # Per la sentiment analysis
+```
+```{r Calcolo del sentiment, echo=FALSE, warning=FALSE, message=FALSE}
+if(!file.exists("./lyrics.rds")){
+  # Crea un dataframe contenente una volta tutte le canzoni e l'artista che l'ha
+  # pubblicata
+  lyrics <- tracks_v2 %>%
+    filter(!is.na(lyrics)) %>%
+    left_join(artists, by = c("artists" = "id")) %>%
+    distinct(track_id, .keep_all = TRUE) %>%
+    select(track_id, track_name, artists, name, lyrics)
+   
+  # Per ottenere automaticamente il numero di core si può utilizzare detectCores()
+  no_cores <- detectCores()
+   
+  # Setup del "cluster", ovvero dell'oggetto che eseguirà parallalamente
+  # la funzione "sentiment"
+  clust <- makeCluster(no_cores) 
+  #La libreria ha biosgno di essere caricata all'interno del cluster
+  clusterCall(clust, function() library(TextWiller)) 
+  
+  # system.time(expr = lyrics %>% mutate(sentiment=sentiment(lyrics)))
+  # user  system elapsed 
+  # 171.47    0.25  171.96 
+  
+  # system.time(expr = parLapply(clust, lyrics$lyrics, sentiment))
+  # user  system elapsed 
+  # 0.08    0.09  142.34 
+  
+  # Il tempo effettivamente trascorso è "elapsed". Anche se non ti molto, la 
+  # versione parallela è stata più veloce
+  
+  lyrics_sentiment <- parLapply(clust, lyrics$lyrics, sentiment)
+  lyrics$sentiment <- unlist(lyrics_sentiment, use.names=FALSE)
+  
+  # I dati riguradanti il sentiment vengono salvati in formato .rds, in modo da 
+  # non dover essere sempre ricalcolati 
+  saveRDS(lyrics, "lyrics.rds")
+}else{
+  lyrics <- readRDS("lyrics.rds")
+}
+
+sentiment_per_genre <- lyrics %>%
+  inner_join(artists, by = c("artists" = "id")) %>%
+  distinct(track_id, genres, .keep_all = TRUE) %>%
+  select(-name.y, -followers, -album) %>%
+  rename("name" = "name.x") %>%
+  group_by(genres) %>%
+  count(sentiment) %>%
+  mutate(total_tracks = sum(n)) %>%
+  spread(sentiment, n) %>%
+  rename("neg" = "-1", "neu" = "0", "pos" = "1") %>%
+  mutate(neg = neg/total_tracks, neu = neu/total_tracks, pos = pos/total_tracks)
+
+
+tracks_artists_sentiment <- tracks_v2 %>%
+  inner_join(lyrics, by = c("track_id" = "track_id")) %>%
+  distinct(track_id, artists.x, .keep_all = TRUE) %>%
+  select(track_id, track_name.x, artists.x, lyrics.x, sentiment) %>%
+  rename("artists" = "artists.x", 
+         "track_name" = "track_name.x", 
+         "lyrics" = "lyrics.x")
+
+tracks_lyrics_sentiment_with_name <- tracks_artists_sentiment %>%
+  inner_join(artists, by = c("artists" = "id")) %>%
+  distinct(track_id, artists, .keep_all = TRUE) %>%
+  select(-followers, -album, -genres)
+  
+sentiment_per_artist <- tracks_lyrics_sentiment_with_name %>%
+  group_by(artists, name) %>%
+  count(sentiment) %>%
+  mutate(total_tracks = sum(n)) %>%
+  spread(sentiment, n) %>%
+  rename("neg" = "-1", "neu" = "0", "pos" ="1") %>%
+  mutate(neg = neg/total_tracks, neu = neu/total_tracks, pos = pos/total_tracks)
+```
+
+
+```{r Reload di ggplot2, echo=FALSE, message=FALSE, warning=FALSE, results=FALSE}
+# In Windows 11, plottare il grafo impedisce a ggplot di visualizzare i grafici
+# correttamente. Attraverso la funzione "reload" ricarichiamo il pacchetto
+# di ggplot per ripristinarlo.
+
+devtools::reload(pkgload::inst("ggplot2"))
+```
+
+
+```{r Grafici per artista e genere, echo=FALSE}
+# Funzione custom che ritorna un bar plot. Evita di avere molto codice duplicato
+get_plot_pos_neg <- function(df, pos_neg, art, kind = "Genere"){
+  if(pos_neg == "neg"){
+    bar_color <- "#8b063f"
+  }else{
+    bar_color <- "#32c177"
+  }
+  
+  return (df %>%
+    filter(total_tracks > 25) %>%
+    ungroup() %>%
+    slice_max(.data[[pos_neg]], n=10) %>%
+    ggplot(aes(x=reorder(.data[[art]], .data[[pos_neg]]), 
+               y=.data[[pos_neg]]*100)) + 
+    geom_bar(stat="identity", fill=bar_color, color="black", size=0.5) +
+    labs(x=kind, y="Percentuale") +
+    coord_flip() +
+    theme_bw() +
+    custom_theme +
+    ylim(0, 100))
+    
+}
+```
+
+## Generi e testi negativi a confronto
+
+```{r echo=FALSE}
+# Grafici per genere (i 10 più negativi)
+neg_gen <- get_plot_pos_neg(sentiment_per_genre, "neg", "genres")
+neg_gen +
+  labs(
+      title = "Generi con i testi più negativi",
+  )
+```
+
+## Generi e testi positivi a confronto
+
+```{r echo=FALSE}
+# Grafici per genere (i 10 più positivi)
+pos_gen <- get_plot_pos_neg(sentiment_per_genre, "pos", "genres")
+pos_gen +
+  labs(
+      title = "Generi con i testi più positivi",
+  )
+```
+
+## Artisti e testi negativi a confronto
+
+```{r echo=FALSE}
+# Grafici per artista (i 10 più negativi)
+neg_art <- get_plot_pos_neg(sentiment_per_artist, "neg", "name", 
+                            kind = "Artista")
+neg_art +
+  labs(
+      title = "Artisti con i testi più negativi",
+  )
+
+```
+
+## Artisti e testi positivi a confronto
+
+```{r echo=FALSE}
+# Grafici per artista (i 10 più positivi)
+pos_art <- get_plot_pos_neg(sentiment_per_artist, "pos", "name", 
+                            kind = "Artista")
+pos_art +
+  labs(
+      title = "Artisti con i testi più positivi",
+  )
+
+```
+
+## Community detection
+### In che gruppi vengono divisi gli artisti?
+
+```{r Individuazione delle community, include = FALSE, echo=FALSE, results=FALSE}
+g_no_low_followers <- delete_vertices(g, V(g)$followers <= 80000)
+c2 <- cluster_louvain(g_no_low_followers)
+
+library(ggraph)
+library(tidygraph)
+
+tidy = as_tbl_graph(g)
+
+set_graph_style()
+
+tidy_g <- tidy %>%
+  activate(nodes) %>%
+  mutate(degree = centrality_degree()) %>%
+  filter(degree > 15, followers > 80000) %>% 
+  mutate(community = as.factor(group_louvain()))
+
+ggraph(tidy_g) +
+  geom_edge_link(aes(alpha = centrality_edge_betweenness()), 
+                 show.legend = FALSE) +
+  geom_node_point(aes(size = centrality_pagerank(), colour = community)) + 
+  geom_node_text(aes(label = artist_name), repel = TRUE) +
+  scale_colour_discrete(name="Community") +
+  scale_size_continuous(name="PageRank") +
+  legend_custom
+
+# ggsave(filename = "test.tiff",  width = 25, height = 15, dpi=350)
+unset_graph_style()
+```
