@@ -1,5 +1,5 @@
 ---
-title: "italian-music-ads"
+title: "Analisi dell'hip-hop italiano - Advanced Data Science"
 author: "Riccardo Lunardi"
 date: "2/02/2022"
 output: html_document
@@ -23,13 +23,13 @@ Le domande poste sono state:
 
 # Raccolta dei dati
 
-I dati raccolti su artisti e tracce (lyrics) sono stati ottenuti tramite le API di Spotify, mentre i testi tramite i servizi di [api.lyrics.ovh](api.lyrics.ovh) e di [azlyrics.com](azlyrics.com).
+I dati raccolti sugli artisti e sui brani sono stati ottenuti tramite le API di Spotify, mentre i lyrics, ovvero i testi delle canzoni, attraverso i servizi di [api.lyrics.ovh](api.lyrics.ovh) e di [azlyrics.com](azlyrics.com).
 
-Il notebook per lo scraping in Python è presente nella cartella "scraping" della repository di GitHub. `server_scraper.py` è uno stato un programma ausiliairo che funzionava in background. È stato deciso di utilizzare Python per lo scraping per varie conoscenze pregresse.
+Il notebook per lo scraping in Python è presente nella cartella "scraping" della repository di GitHub. `server_scraper.py` è uno stato un programma ausiliario che funzionava in background. È stato deciso di utilizzare Python per lo scraping viste le varie conoscenze pregresse su tale ambito.
 
 Il metodo per ottenere gli artisti e le tracce è stato il seguente:
 
-- Partendo da "La mia libreria" su Spotify, sono stati isolati tutti gli artisti italiani
+- Partendo da "La mia libreria" su Spotify, sono stati isolati tutti gli artisti italiani.
 - Da questi artisti, sono stati salvati tutti gli altri musicisti simili che Spotify considera tali
 - Da questo insieme sono stati poi aggiunti tutti quelli, non ancora presenti, che hanno collaborato almeno una volta nella loro carriera con almeno uno degli artisti ottenuti fino ad ora.
 - Da questo gruppo di artisti, è stata salvata ogni canzone pubblicata durante la loro carriera.
@@ -41,7 +41,7 @@ Visto che nella canzoni vi sono molte parole ripetute spesso, basta pensare ai r
 
 Per caricare le informazioni ottenute dallo scraper utilizziamo la funzione `load`. Il formato dei file da cui si leggono i dati è .RData: sono stati già convertiti in tale formato da Python tramite la libreria `rpy2`, la quale ha convertito un dataframe di _Pandas_ in un dataframe di _R_.
 
-```{r Caricamento dati, echo=TRUE, warning=FALSE, results=FALSE}
+```{r Caricamento dati, echo=TRUE, warning=FALSE, message=FALSE, results=FALSE}
 library(dplyr)
 
 load("scraper/artists.RData") 
@@ -71,7 +71,7 @@ In totale, sono stati scaricati i dati di 475 artisti, 42028 tracce e 13138 test
 
 ```{r Quantità dati, echo=TRUE}
 
-# Quantità di testi scaricate
+# Quantità di testi scaricati
 qnty_tracks <- tracks_v2 %>%
   distinct(track_id, .keep_all = TRUE) %>%
   count()
@@ -94,7 +94,7 @@ ratio
 
 Con il blocco di codice qui sono vengono mostrati i principali generi che verranno utilizzati nell'analisi.
 
-```{r Generi trattati, echo=TRUE, WARNING=FALSE}
+```{r Generi trattati, echo=TRUE, warning=FALSE, message=FALSE}
 library(ggplot2)
 
 genres_df <- artists %>%
@@ -134,22 +134,27 @@ Tramite le API di Spotify, ci viene fornita la durata di una canzone in millisec
 
 # Durata delle canzoni
 
-Per verificare se c'è stato un qualche tipo di cambiamento nella durata delle canzoni nel tempo, viene calcolata la media delle canzoni per ogni mese, a partire dal 1990. Non vengono considerati gli anni prima del 1990 per la scarsità di dati. Si scartano anche le canzoni con una durata superiore ai 6 minuti e 40 secondi: data l'alta densità di dati per i recenti 20 anni, eliminiamo questi dati che farebbero leva su un'eventuale trend lineare.
+Per verificare se c'è stato un qualche tipo di cambiamento nella durata delle canzoni nel tempo, viene calcolata la media delle canzoni per ogni mese, a partire dal 1990. Non vengono considerati gli anni prima del 1990 per la scarsità di dati. Si scartano anche le canzoni con una durata superiore ai 6 minuti e 40 secondi: data l'alta densità di dati per i recenti 20 anni, eliminiamo questi dati che farebbero leva su un'eventuale trend.
 
 ```{r Durata delle canzoni, echo=TRUE, warning = FALSE, message=FALSE}
+# Si trasforma la colonna release_date da striga a oggetto "Date", eliminando 
+# tutti i brani doppi
 tracks <- tracks_v2 %>%
   mutate(release_date = as.Date(release_date, "%Y-%m-%d")) %>%
   distinct(track_id, .keep_all = TRUE)
 
+# Vengono aggregate le durate delle canzoni per mese
 duration_per_month <- tracks %>%
   filter(release_date > "1990-01-01", duration_ms < 4*10^5) %>%
   group_by(month = lubridate::floor_date(release_date, "month")) %>%
   summarize(duration_ms_month = mean(duration_ms))
 
+# Tema custom per gli scatterplot
 custom_scatter_plot <- theme(axis.line = element_line(colour = "black"),
                              panel.border = element_blank(),
                              panel.background = element_blank()) 
 
+# Scatterplot mese~durata
 ggplot(duration_per_month, aes(x=month, y=duration_ms_month)) + 
   geom_point() +
   geom_smooth(method=lm) +
@@ -160,6 +165,7 @@ ggplot(duration_per_month, aes(x=month, y=duration_ms_month)) +
   theme_bw() + 
   custom_theme +
   custom_scatter_plot
+
 # Non di molto, ma sono negativamente correlate
 cor(duration_per_month$duration_ms_month, as.numeric(duration_per_month$month))
 ```
@@ -169,8 +175,7 @@ Anche il coefficiente di Pearson suggerisce un trend di correlazione negativo.
 
 # Numero di tracce medio
 
-Come per la durata delle canzoni, si vuole verificare se ci sia un qualche trend nel tempo riguardante il numero di tracce per album. Per fare questo, si considera la media delle tracce pubblicate per album, per ogni mese. Non si considera il periodo precedente al 1990 per scarsità di dati e nemmeno gli album con più di 30 tracce: questo perché gli album con quel numero di tracce sono collection o versioni deluxe, ovvero album con le stesse tracce di un altro disco, ma riproposte insieme a inediti. Quello che si vuole limitare è quindi il conteggio doppio di contenuto.
-
+Come per la durata delle canzoni, si vuole verificare se ci sia un qualche trend nel tempo riguardante il numero di tracce per album. Per fare questo, si considera la media dei brani pubblicati per album, per ogni mese. Vengono ignorate le informazioni del periodo precedente al 1990 per scarsità di dati e nemmeno gli album con più di 30 tracce: questo perché i dischi con quel numero di tracce sono solitamente collection o versioni deluxe, ovvero un album già uscito, ma riproposto insieme a qualche brano inedito. Quello che si vuole limitare è quindi il conteggio doppio di contenuto.
 
 ```{r Numero di tracce medio, echo=TRUE, warning = FALSE, , message=FALSE}
 tracks_per_month <- tracks %>%
@@ -202,11 +207,12 @@ Si vuole anche confrontare, per genere, il trend della durata delle canzoni risp
 
 ```{r Durata delle canzoni: generi a confronto, echo=TRUE, warning = FALSE}
 allowed_genres = c("italian hip hop", 
-                  "italian underground hip hop", 
-                  "italian adult pop", 
-                  "italian indie pop")
+                   "italian underground hip hop", 
+                   "italian adult pop", 
+                   "italian indie pop")
 
-# Per ogni artista viene considerato solo il suo genere principale, ovvero il primo, seguendo l'ordine del dataframe
+# Per ogni artista viene considerato solo il suo genere principale, ovvero il
+# primo, seguendo l'ordine del dataframe
 artists_main_genre <- artists %>%
   select(-followers) %>%
   filter(genres %in% allowed_genres) %>%
@@ -214,8 +220,8 @@ artists_main_genre <- artists %>%
   top_n(n=1, wt=desc(genres)) %>%
   rename(album_id=album)
 
-# Questo dataframe filtra anche per album perché verrà utilizzato anche in un
-# successivo blocco di codice.
+# Questo dataframe viene filtratp anche per album perché verrà utilizzato anche 
+# in un successivo blocco di codice.
 album_info_genres <- tracks %>%
   distinct(album_id, release_date, total_tracks, duration_ms) %>%
   filter(release_date > "1990-01-01", 
@@ -226,19 +232,22 @@ album_info_genres <- tracks %>%
 
 ```
 
-Per ogni mese, viene, come fatto precedentemente, viene plottato uno scatterplot con la durata media delle canzoni pubblicate.
+Per ogni mese, come fatto precedentemente, viene plottato uno scatterplot con la durata media delle canzoni pubblicate.
 
 ```{r Durata mesile, per genere, echo=TRUE}
 duration_per_genre_month <- album_info_genres %>%
   group_by(genres, month = lubridate::floor_date(release_date, "month")) %>%
   summarize(duration_month_mean = mean(duration_ms))
-  
+
+# Tema customizzato per la legenda
 legend_custom <- theme(legend.title = element_text(size = 10), 
         legend.text  = element_text(size = 8),
         legend.key.size = unit(1, "lines"),
         legend.background=element_blank())
 
-ggplot(duration_per_genre_month, aes(x=month, y=duration_month_mean, color=genres)) + 
+# Plot per il numbero medio di canzoni pubblicate 
+ggplot(duration_per_genre_month, aes(x=month, y=duration_month_mean, 
+                                     color=genres)) + 
   geom_point() +
   geom_smooth(method=lm) +
   scale_color_brewer(name="Generi", palette = "Spectral") +
@@ -278,7 +287,7 @@ Anche il valore del coefficiente di correlazione di Pearson conferma ciò che è
 
 # Numero di tracce medio: generi a confronto
 
-Per ognuno dei principali generi musicali, vengono messi a confronto i trend dei numeri di tracce medio rispetto al mese
+Per ognuno dei principali generi musicali, vengono messi a confronto i trend dei numeri di tracce medio rispetto al mese.
 
 ```{r Numero di tracce medio confrontando il genere, echo=TRUE, message=FALSE}
 tracks_per_genre_month <- album_info_genres %>%
@@ -315,13 +324,13 @@ cor(cor_tracks_per_genre_month[, c('month',
 
 ```
 
-Anche in questo caso i trend osservati sono leggermente negativi, tranne per l'`italian adult pop`, che sembra avere una piccolissima correlazione positiva
+Anche in questo caso i trend osservati sono leggermente negativi, tranne per l'`italian adult pop`, che sembra avere una piccolissima correlazione positiva.
 
 # Rete degli artisti
 
 Per valutare chi sia l'artista più influente nel dataset, quali sono i cantanti che possono vantare più collaborazioni e in quali sottogruppi possono essere suddivisi gli artisti, è necessario costruire un grafo. I vertici rappresenteranno gli artisti, mentre gli archi una collaborazione, ovvero una canzone a cui entrambi hanno partecipato. Il peso degli archi sarà uguale al numero di collaborazioni con un dato artista.
 
-```{r Import di igraph e gtools, warning=FALSE, results=FALSE}
+```{r Import di igraph e gtools, warning=FALSE, message=FALSE, results=FALSE}
 library(igraph)
 library(gtools)
 ```
@@ -351,6 +360,7 @@ Alla fine del ciclo for, viene convertita la matrice in dataframe, da cui vengon
 Il ciclo for non è molto efficiente in R, però questo è stato l'unico modo con cui si è riusciti ad eseguire quest'operazione. L'uso della matrice ottimizza leggermente l'operazione.
 
 ```{r Creazione archi, echo=TRUE}
+# Matrice vuota, con tre colonne
 matrix_songs_edges <- matrix(data=NA, nrow = 0, ncol = 3)
 
 # Per ogni canzone in cui c'è stato un feat
@@ -360,18 +370,22 @@ for(feat in feat_songs$track_id){
     filter(track_id == feat) %>% 
     select(artists, release_date)
   
-  # 2. Fare permutazione di due
+  # 2a. Fare combinazioni di due, senza ripetizioni
   connections <- combinations(
     n=length(feat_artists$artists), 
     r=2, 
     v=feat_artists$artists, 
     repeats.allowed=FALSE)
-  connections <- cbind(connections, rep(feat_artists$release_date[1], nrow(connections)))  
   
-  # 3. Metterle in un dataframe
+  # 2b. Aggiungere alle combinazioni la data di collaborazione
+  connections <- cbind(connections, 
+                       rep(feat_artists$release_date[1], nrow(connections)))  
+  
+  # 3. Aggiungere le combinazioni alla matrice
   matrix_songs_edges <- rbind(matrix_songs_edges, connections)
 }
 
+# 4, Convertire la matrice in dataframe
 songs_edges <- as.data.frame(matrix_songs_edges)
 colnames(songs_edges) <- c('to', 'from', "release_date")
 
@@ -403,7 +417,7 @@ feat_couples <- songs_edges %>%
 feat_couples
 ```
 
-A parte _MadMan_ e _Gemitaiz_, _J-AX_ e _Fedez_ ed _Emis Killa_ e _Jake La Furia_, il resto delle coppie è formato da un cantante e un produttore. È ormai diventato normale infatti citare il proprio producer nella lista dei featuring.
+A parte _MadMan_ e _Gemitaiz_, _J-AX_ e _Fedez_ ed _Emis Killa_ e _Jake La Furia_, il resto delle coppie è formato da un cantante e un produttore. È infatti ormai diventato normale citare il proprio producer nella lista dei featuring.
 Non sorprendono _MadMan_ e _Gemitaiz_ al primo posto tra le coppie artista-artista: i due, oltre a svariate collaborazioni di coppia in brani di altri cantanti, hanno pubblicato anche tre dischi insieme. Anche le altre tre coppie hanno collaborato ad almeno un disco.
 
 # Generazione grafo
@@ -418,7 +432,7 @@ g = delete.vertices(g, which(degree(g)==0))
 
 # Featuring
 
-Riguardo ai featuring, si vuole individuare chi, tra gli artisti ha avuto più collaborazioni con cantanti diversi e chi ne ha avute di più in totale.
+Riguardo ai featuring, si vuole individuare chi, tra gli artisti, ha avuto più collaborazioni con cantanti diversi e chi ne ha avute di più in totale.
 Per fare ciò, sono state usate le funzioni `degree` e `strength`. `degree` non considera i pesi degli archi, quindi ritornerà il numero di collaborazioni con artisti diversi, senza contarne la quantità; al contrario di `strength`, che invece la considererà.
 
 ```{r Calcolo del degree e della strength, echo=TRUE}
@@ -494,6 +508,8 @@ Un cantante che non era stato osservato prima è *Marracash*: non avendo avuto i
 
 # Community detection
 
+## In che gruppi vengono divisi gli artisti?
+
 Tramite gli algoritmi di community detection, si vuole andare ad individuare quali sono gli artisti che sono collegati di più tra di loro, provando a trovare dei gruppi.
 Per trovare il miglior algoritmo, sono stati testati diversi algoritmi di community detection. I vari risultati sono stati confrontati tra loro usando la modularità.
 
@@ -520,18 +536,18 @@ modularity(c6)
 # modularity(c7)
 ```
 
-Confrontando le varie modularity, il modello migliore sembra essere quello generato da `cluster_louvain`. Era stato testato anche l'hierarchical clustering, ma ha dato risultati leggermente peggiori di `cluster_leading_eigen`.
+Confrontando le varie modularity, il modello migliore sembra essere quello generato da `cluster_louvain`. Era stato testato anche l'hierarchical clustering, ma ha dato risultati leggermente peggiori di `cluster_leading_eigen`. Non è stato possibile l'uso di `cluster_optimal`, che richiedeva troppo tempo per essere eseguita.
 
-# Plotting della rete
+## Plotting della rete
 
 L'oggetto `igraph` che rappresenta la rete viene convertito in uno di `tidygraph`, che verrà usato per il plotting. Tramite l'utilizzo di `group_louvain`, verranno messi in risalto i cluster.
 Vengono mostrati i vertici con grado maggiore di 15 e con almeno 80000 followers. Agli archi viene applicata una trasparenza, basandosi sulla betweenness, mentre i nodi cambieranno grandezza in base al PageRank. I colori dei vertici indica a quale community fanno parte.
 
-```{r Import di ggraph e tidygraph, echo=TRUE, results=FALSE, warning=FALSE}
+```{r Import di ggraph e tidygraph, echo=TRUE, results=FALSE, warning=FALSE, message=FALSE}
 library(ggraph)
 library(tidygraph)
 ```
-```{r Plotting della rete divisa in cluster, echo=TRUE}
+```{r Plotting della rete divisa in cluster, echo=TRUE, warning=FALSE, message=FALSE}
 tidy = as_tbl_graph(g)
 
 set_graph_style()
@@ -565,11 +581,15 @@ Il terzo gruppo è quello considerabile più "commerciale". Tra i membri della c
 
 La caratteristica che collega gli elementi del quarto cluster è sicuramente la provenienza: tutti gli artisti infatti sono nati e cresciuti nelle vicinanze di Napoli. Gli unici due cantanti non di Napoli sono Briga e Nayt, entrambi di Roma.
 
-# Conclusioni sulle community
+## Conclusioni sulle community
 
 Prima di analizzare i dati, la previsione è che i cluster fossero divisi per etichetta discografica: la realtà si rivelata molto più complessa. I gruppi, dando un'interpretazione personale, sono stati suddivisi non solo per l'etichetta, ma per anche provenienza, per età e per genere musicale.
 
-# Analisi del sentimento sui testi
+# I testi possono essere considerati positivi o negativi?
+
+Per riuscire a capire il tipo di emozione espresso nei lyrics, utilizziamo l'analisi del sentiment.
+
+## Analisi del sentimento sui testi
 
 Per 13138 brani, sono stati scaricati i relativi testi, che sono già stati tokenizzati.
 Per individuare la negatività e la positività dei brani, si utilizza `TextWiller`, una libreria di R utilizzata per l'analisi del _sentiment_ di testo italiano. Ad ogni testo, verrà assegnato _-1_ se il sentimento è negativo, _0_ se neutrale oppure _1_ se positivo.
@@ -625,7 +645,7 @@ Inizialmente generiamo un dataframe contenente solo tutte le canzoni a cui è st
 Nei blocchi successivi verranno fatti due join: uno per i generi, assegnando ad ogni traccia il genere principale dell'artista che l'ha pubblicata, ed uno per gli artisti.
 Ad ogni canzone, verranno poi associati tutti gli artisti che vi hanno collaborato: in questo modo sarà possibile capire il `sentiment` sia per le tracce personalmente pubblicate, sia per quelle in cui si ha solo partecipato.
 
-L'aggregazione del sentiment avviene sommando per genere o per artista, dividendo poi per il numero totale di traccie. Questa normalizzazione è necessaria, altrimenti non si potrebbero confrontare generi o artisti con un numero diverso di tracce.
+L'aggregazione del sentiment avviene sommando per genere o per artista, dividendo poi per il numero totale di tracce. Questa normalizzazione è necessaria, altrimenti non si potrebbero confrontare generi o artisti con un numero diverso di brani
 
 ```{r Divisione del sentiment per genere e per artista, echo=TRUE}
 sentiment_per_genre <- lyrics %>%
@@ -702,7 +722,7 @@ sentiment_per_artist %>%
   arrange(-neg)
 ```
 
-Tra gli artisti con lyrics più negativi risaltano *Noyz Narcos*, *Chicoria* e *Metal Carter*. Il trio ha fatto parte del collettivo *TruceKlan* negli anno duemila. Il gruppo, ormai sciolto, è storicamente famoso per aver scritto testi molto violenti. I dati analizzati confermano tale propensione del collettivo.
+Tra gli artisti con lyrics più negativi risaltano *Noyz Narcos*, *Chicoria* e *Metal Carter*. Il trio ha fatto parte del collettivo *TruceKlan* negli anni duemila. Il gruppo, ormai sciolto, è storicamente famoso per aver scritto testi molto violenti. I dati analizzati confermano tale propensione del collettivo.
 Gli altri musicisti fanno tutti parte del mondo hip-hop, confermando la tendenza del genere ad essere negativo.
 
 ```{r Sentiment positivo (per artisti), echo=TRUE}
@@ -728,6 +748,7 @@ devtools::reload(pkgload::inst("ggplot2"))
 
 
 ```{r Grafici per artista e genere, echo=TRUE}
+# Funzione custom che ritorna un bar plot. Evita di avere molto codice duplicato
 get_plot_pos_neg <- function(df, pos_neg, art, kind = "Genere"){
   if(pos_neg == "neg"){
     bar_color <- "#8b063f"
