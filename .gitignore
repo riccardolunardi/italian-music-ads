@@ -129,3 +129,4 @@ dmypy.json
 .pyre/
 scraper/cred.json
 scraper/.cache-lunni
+*.txt
