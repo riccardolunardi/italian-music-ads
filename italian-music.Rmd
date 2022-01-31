@@ -177,7 +177,7 @@ Anche il coefficiente di Pearson suggerisce un trend di correlazione negativo.
 
 Come per la durata delle canzoni, si vuole verificare se ci sia un qualche trend nel tempo riguardante il numero di tracce per album. Per fare questo, si considera la media dei brani pubblicati per album, per ogni mese. Vengono ignorate le informazioni del periodo precedente al 1990 per scarsità di dati e nemmeno gli album con più di 30 tracce: questo perché i dischi con quel numero di tracce sono solitamente collection o versioni deluxe, ovvero un album già uscito, ma riproposto insieme a qualche brano inedito. Quello che si vuole limitare è quindi il conteggio doppio di contenuto.
 
-```{r Numero di tracce medio, echo=TRUE, warning = FALSE, , message=FALSE}
+```{r Numero di tracce medio, echo=TRUE, warning = FALSE, message=FALSE}
 tracks_per_month <- tracks %>%
   distinct(album_id, release_date, total_tracks) %>%
   filter(release_date > "1990-01-01", total_tracks < 30) %>%
@@ -441,7 +441,7 @@ Per fare ciò, sono state usate le funzioni `degree` e `strength`. `degree` non 
 top_n_custom <- function(array, n, maxi = T) {
   return(
     attributes(
-      distinct_featuring[order(array, decreasing = maxi)[1:n]])$names
+      array[order(array, decreasing = maxi)[1:n]])$names
     )
 }
 
